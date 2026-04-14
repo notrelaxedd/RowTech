@@ -1,44 +1,62 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { type EmailOtpType } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
 // =============================================================================
-// Auth Callback — exchanges the one-time code from the magic link for a session.
-// Supabase redirects here after the user clicks the email link.
+// Auth Callback — handles two flows:
+//   1. Magic link / email OTP  → ?token_hash=...&type=email
+//   2. OAuth / PKCE            → ?code=...
+// On Vercel, origin is derived from x-forwarded-host to avoid internal IPs.
 // =============================================================================
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const { searchParams } = new URL(request.url);
 
-  if (code) {
-    const cookieStore = await cookies();
+  const token_hash = searchParams.get("token_hash");
+  const type       = searchParams.get("type") as EmailOtpType | null;
+  const code       = searchParams.get("code");
+  const next       = searchParams.get("next") ?? "/";
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          },
+  // Resolve the correct public origin — Vercel sets x-forwarded-host
+  const host   = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+  const proto  = request.headers.get("x-forwarded-proto") ?? "https";
+  const origin = host ? `${proto}://${host}` : new URL(request.url).origin;
+
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
         },
       },
-    );
+    },
+  );
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
+  // Magic link / email OTP flow
+  if (token_hash && type) {
+    const { error } = await supabase.auth.verifyOtp({ token_hash, type });
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
 
-  // Code missing or exchange failed — send back to login with an error hint
+  // OAuth / PKCE flow
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      return NextResponse.redirect(`${origin}${next}`);
+    }
+  }
+
   return NextResponse.redirect(`${origin}/login?error=auth`);
 }
