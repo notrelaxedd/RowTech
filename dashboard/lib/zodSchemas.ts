@@ -44,11 +44,13 @@ export const updateSessionSchema = z.object({
 });
 
 export const createBoatSchema = z.object({
-  name: z.string().min(1).max(100),
+  name:       z.string().min(1).max(100),
+  seat_count: z.number().int().min(1).max(8).default(8),
 });
 
 export const updateBoatSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name:       z.string().min(1).max(100).optional(),
+  seat_count: z.number().int().min(1).max(8).optional(),
   seats: z.array(z.object({
     seat_number: z.number().int().min(1).max(8),
     profile_id:  z.string().uuid().nullable(),

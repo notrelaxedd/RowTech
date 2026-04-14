@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { createBoatSchema } from "@/lib/zodSchemas";
 import { ok, err } from "@/lib/apiResponse";
+import type { BoatSeatPopulated, BoatWithSeats } from "@/types";
 
 // =============================================================================
 // GET  /api/boats — List all boats with seat assignments populated
@@ -25,7 +26,16 @@ export async function GET() {
 
   if (error) return err("Failed to fetch boats", 500);
 
-  return ok(data ?? []);
+  // Remap boat_seats → seats to match BoatWithSeats type
+  const boats: BoatWithSeats[] = (data ?? []).map((b) => ({
+    id:         b.id,
+    name:       b.name,
+    seat_count: b.seat_count ?? 8,
+    created_at: b.created_at,
+    seats: ((b.boat_seats ?? []) as BoatSeatPopulated[]),
+  }));
+
+  return ok(boats);
 }
 
 export async function POST(request: NextRequest) {
@@ -45,11 +55,11 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("boats")
-    .insert({ name: parsed.data.name })
+    .insert({ name: parsed.data.name, seat_count: parsed.data.seat_count })
     .select()
     .single();
 
   if (error) return err("Failed to create boat", 500);
 
-  return ok(data, 201);
+  return ok({ ...data, seats: [] }, 201);
 }

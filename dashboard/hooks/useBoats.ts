@@ -11,7 +11,7 @@ interface UseBoatsReturn {
   boats:       BoatWithSeats[];
   isLoading:   boolean;
   error:       string | null;
-  createBoat:  (name: string) => Promise<BoatWithSeats | null>;
+  createBoat:  (name: string, seatCount?: number) => Promise<BoatWithSeats | null>;
   updateBoat:  (id: string, body: UpdateBoatBody) => Promise<BoatWithSeats | null>;
   refresh:     () => void;
 }
@@ -47,12 +47,12 @@ export function useBoats(): UseBoatsReturn {
     return () => { cancelled = true; };
   }, [tick]);
 
-  const createBoat = useCallback(async (name: string): Promise<BoatWithSeats | null> => {
+  const createBoat = useCallback(async (name: string, seatCount = 8): Promise<BoatWithSeats | null> => {
     try {
       const res  = await fetch("/api/boats", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ name }),
+        body:    JSON.stringify({ name, seat_count: seatCount }),
       });
       const json = await res.json() as { ok: boolean; data?: BoatWithSeats; error?: string };
       if (json.ok && json.data) {

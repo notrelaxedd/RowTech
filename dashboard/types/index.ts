@@ -43,6 +43,7 @@ export interface Profile {
 export interface Boat {
   id:         string;
   name:       string;
+  seat_count: number;
   created_at: string;
 }
 
@@ -240,8 +241,9 @@ export interface CreateBoatBody {
 
 // PUT /api/boats/[id] request body
 export interface UpdateBoatBody {
-  name?:  string;
-  seats?: UpdateSeatAssignment[];
+  name?:       string;
+  seat_count?: number;
+  seats?:      UpdateSeatAssignment[];
 }
 
 export interface UpdateSeatAssignment {
