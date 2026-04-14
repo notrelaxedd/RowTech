@@ -95,9 +95,10 @@ void http_forwarder_post_telemetry() {
 
   const SensorState* sensors = sensor_table_get_all();
 
-  // Build JSON array of all sensor states
+  // Build JSON object { "sensors": [...] } matching the API schema
   JsonDocument doc;
-  JsonArray arr = doc.to<JsonArray>();
+  JsonObject root = doc.to<JsonObject>();
+  JsonArray arr   = root["sensors"].to<JsonArray>();
 
   for (int i = 0; i < HUB_MAX_SENSORS; i++) {
     if (!sensors[i].active) continue;
