@@ -1,0 +1,18 @@
+{
+  "name": "rowtech",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "dashboard"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=dashboard",
+    "build": "npm run build --workspace=dashboard",
+    "lint": "npm run lint --workspace=dashboard",
+    "typecheck": "npm run typecheck --workspace=dashboard"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
