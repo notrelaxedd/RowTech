@@ -63,9 +63,36 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Look up the current active session + its boat seat layout
+  const { data: activeSession } = await supabase
+    .from("sessions")
+    .select("id, boat_id")
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sessionId = activeSession?.id ?? null;
+
+  // Build MAC → seat_number map from boat_seats if a session is active
+  const macToSeat = new Map<string, number>();
+  if (activeSession?.boat_id) {
+    const { data: boatSeats } = await supabase
+      .from("boat_seats")
+      .select("seat_number, device_mac")
+      .eq("boat_id", activeSession.boat_id)
+      .not("device_mac", "is", null);
+
+    for (const seat of boatSeats ?? []) {
+      if (seat.device_mac) macToSeat.set(seat.device_mac, seat.seat_number);
+    }
+  }
+
   // Upsert telemetry rows (one per device — not append-only)
   const telemetryRows = sensors.map((s) => ({
     device_mac:      s.mac,
+    session_id:      sessionId,
+    seat_number:     macToSeat.get(s.mac) ?? null,
     timestamp:       s.timestamp,
     phase:           s.phase,
     roll:            s.roll,
