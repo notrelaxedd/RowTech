@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { BoatWithSeats } from "@/types";
+import type { BoatWithSeats, Session } from "@/types";
 
 // =============================================================================
 // StartSessionModal — Boat selector + seat assignment confirmation.
@@ -11,7 +11,7 @@ interface StartSessionModalProps {
   open:         boolean;
   onClose:      () => void;
   boats:        BoatWithSeats[];
-  onConfirm:    (boatId: string) => Promise<void>;
+  onConfirm:    (boatId: string) => Promise<Session | null>;
   isStarting:   boolean;
 }
 

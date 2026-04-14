@@ -1,36 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Sidebar }            from "@/components/layout/Sidebar";
-import { Header }             from "@/components/layout/Header";
-import { StartSessionModal }  from "@/components/layout/StartSessionModal";
-import { SimulationBanner }   from "@/components/system/SimulationBanner";
-import { useSession }         from "@/hooks/useSession";
-import { useBoats }           from "@/hooks/useBoats";
-import { useRowTech }         from "@/hooks/useRowTech";
+import { Sidebar }                    from "@/components/layout/Sidebar";
+import { Header }                     from "@/components/layout/Header";
+import { StartSessionModal }          from "@/components/layout/StartSessionModal";
+import { SimulationBanner }           from "@/components/system/SimulationBanner";
+import { SessionProvider, useSession } from "@/hooks/useSession";
+import { useBoats }                   from "@/hooks/useBoats";
+import { useRowTech }                 from "@/hooks/useRowTech";
 
 // =============================================================================
-// Dashboard Layout — Sidebar + Header with session management.
-// Wraps all authenticated dashboard pages.
+// Dashboard Layout — SessionProvider wraps everything so all pages share
+// the same activeSession state via useSession().
 // =============================================================================
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const sessionHook  = useSession();
-  const { boats }    = useBoats();
+  const session    = useSession();
+  const { boats }  = useBoats();
 
-  // useRowTech drives the header status; pages subscribe independently
   const { isLive, isSimulated, sessionTime, toggleSimulation } = useRowTech(
-    sessionHook.activeSession?.id ?? null,
+    session.activeSession?.id ?? null,
   );
-
-  const handleStartConfirm = async (boatId: string) => {
-    await sessionHook.startSession(boatId);
-  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -39,19 +30,19 @@ export default function DashboardLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         <SimulationBanner isSimulated={isSimulated} />
         <Header
-          activeSession={sessionHook.activeSession}
+          activeSession={session.activeSession}
           isLive={isLive}
           isSimulated={isSimulated}
           sessionTime={sessionTime}
           onStartSession={() => setModalOpen(true)}
           onToggleSimulation={toggleSimulation}
           onEndSession={() => {
-            if (sessionHook.activeSession) {
-              void sessionHook.endSession(sessionHook.activeSession.id);
+            if (session.activeSession) {
+              void session.endSession(session.activeSession.id);
             }
           }}
-          isStarting={sessionHook.isStarting}
-          isEnding={sessionHook.isEnding}
+          isStarting={session.isStarting}
+          isEnding={session.isEnding}
         />
 
         <main className="flex-1 overflow-y-auto p-6">
@@ -63,9 +54,17 @@ export default function DashboardLayout({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         boats={boats}
-        onConfirm={handleStartConfirm}
-        isStarting={sessionHook.isStarting}
+        onConfirm={(boatId) => session.startSession(boatId)}
+        isStarting={session.isStarting}
       />
     </div>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </SessionProvider>
   );
 }
