@@ -19,8 +19,8 @@ Real-time oar positioning sensor system for 8+ sweep rowing boats.
 
 **Sensor wiring (per unit):**
 ```
-MPU-6050 SDA → GPIO 23
-MPU-6050 SCL → GPIO 19
+MPU-6050 SDA → GPIO 19
+MPU-6050 SCL → GPIO 23
 MPU-6050 VCC → 3.3V
 MPU-6050 GND → GND
 Battery +    → Battery ADC pin (GPIO 35) via 100kΩ/100kΩ divider

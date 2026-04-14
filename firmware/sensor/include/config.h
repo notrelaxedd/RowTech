@@ -12,8 +12,8 @@
 // -----------------------------------------------------------------------------
 // Hardware pin assignments (Wemos Lolin32 Lite)
 // -----------------------------------------------------------------------------
-#define PIN_SDA         23      // I2C SDA — connect MPU-6050 SDA here
-#define PIN_SCL         19      // I2C SCL — connect MPU-6050 SCL here
+#define PIN_SDA         19      // I2C SDA — connect MPU-6050 SDA here
+#define PIN_SCL         23      // I2C SCL — connect MPU-6050 SCL here
 #define PIN_LED         22      // Onboard LED (active LOW on Lolin32 Lite)
 #define PIN_BATTERY_ADC 35      // ADC pin for battery voltage divider (100k/100k)
 
