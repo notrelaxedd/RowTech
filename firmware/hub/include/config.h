@@ -32,7 +32,7 @@
 #define HTTP_BACKOFF_MULTIPLIER     2
 
 // Vercel endpoint — CHANGE to your deployed URL before flashing
-#define VERCEL_BASE_URL         "https://your-vercel-app.vercel.app"
+#define VERCEL_BASE_URL         "https://row-tech-dashboard.vercel.app"
 #define TELEMETRY_ENDPOINT      VERCEL_BASE_URL "/api/telemetry"
 #define STROKES_ENDPOINT        VERCEL_BASE_URL "/api/strokes"
 

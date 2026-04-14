@@ -10,6 +10,7 @@ dashboard/out/
 # PlatformIO
 firmware/sensor/.pio/
 firmware/hub/.pio/
+firmware/hub/platformio.local.ini
 
 # Environment
 .env
