@@ -8,14 +8,15 @@ import type { Session } from "@/types";
 // =============================================================================
 
 interface HeaderProps {
-  activeSession:  Session | null;
-  isLive:         boolean;
-  isSimulated:    boolean;
-  sessionTime:    number;    // elapsed ms
-  onStartSession: () => void;
-  onEndSession:   () => void;
-  isStarting:     boolean;
-  isEnding:       boolean;
+  activeSession:    Session | null;
+  isLive:           boolean;
+  isSimulated:      boolean;
+  sessionTime:      number;    // elapsed ms
+  onStartSession:   () => void;
+  onEndSession:     () => void;
+  onToggleSimulation: () => void;
+  isStarting:       boolean;
+  isEnding:         boolean;
 }
 
 export function Header({
@@ -25,6 +26,7 @@ export function Header({
   sessionTime,
   onStartSession,
   onEndSession,
+  onToggleSimulation,
   isStarting,
   isEnding,
 }: HeaderProps) {
@@ -61,7 +63,20 @@ export function Header({
       </div>
 
       {/* Session control */}
-      <div>
+      <div className="flex items-center gap-2">
+        {/* Demo mode toggle */}
+        <button
+          onClick={onToggleSimulation}
+          className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            isSimulated
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+              : "border-border bg-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          title={isSimulated ? "Exit demo mode" : "Enter demo mode"}
+        >
+          Demo
+        </button>
+
         {activeSession ? (
           <button
             onClick={onEndSession}
@@ -81,5 +96,6 @@ export function Header({
         )}
       </div>
     </header>
+
   );
 }

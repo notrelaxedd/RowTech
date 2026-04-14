@@ -24,7 +24,7 @@ export default function DashboardLayout({
   const { boats }    = useBoats();
 
   // useRowTech drives the header status; pages subscribe independently
-  const { isLive, isSimulated, sessionTime } = useRowTech(
+  const { isLive, isSimulated, sessionTime, toggleSimulation } = useRowTech(
     sessionHook.activeSession?.id ?? null,
   );
 
@@ -44,6 +44,7 @@ export default function DashboardLayout({
           isSimulated={isSimulated}
           sessionTime={sessionTime}
           onStartSession={() => setModalOpen(true)}
+          onToggleSimulation={toggleSimulation}
           onEndSession={() => {
             if (sessionHook.activeSession) {
               void sessionHook.endSession(sessionHook.activeSession.id);
