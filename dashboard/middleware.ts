@@ -17,8 +17,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow login page through
-  if (pathname.startsWith("/login")) {
+  // Allow login page and auth callback through
+  if (pathname.startsWith("/login") || pathname.startsWith("/auth/callback")) {
     return NextResponse.next();
   }
 
