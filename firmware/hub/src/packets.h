@@ -17,6 +17,7 @@ struct __attribute__((packed)) BeaconPacket {
   uint8_t  type;
   char     hubMac[18];
   char     version[8];
+  uint8_t  channel;    // Hub's current WiFi channel — sensor must match this
   uint32_t timestamp;
 };
 

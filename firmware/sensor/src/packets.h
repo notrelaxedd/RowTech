@@ -21,6 +21,7 @@ struct __attribute__((packed)) BeaconPacket {
   uint8_t  type;           // PKT_BEACON
   char     hubMac[18];     // Hub MAC address string "AA:BB:CC:DD:EE:FF\0"
   char     version[8];     // Hub firmware version "1.0.0\0"
+  uint8_t  channel;        // Hub's current WiFi channel — sensor sets peer to this
   uint32_t timestamp;      // millis() on hub at send time
 };
 

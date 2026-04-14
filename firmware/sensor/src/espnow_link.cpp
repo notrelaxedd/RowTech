@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <string.h>
 
 // =============================================================================
@@ -43,19 +44,25 @@ static void on_data_recv(const uint8_t* senderMac, const uint8_t* data, int len)
       const BeaconPacket* beacon = reinterpret_cast<const BeaconPacket*>(data);
       memcpy(s_hubMac, senderMac, 6);
 
+      // Match the hub's WiFi channel so ESP-NOW sends succeed
+      const uint8_t hubChannel = beacon->channel;
+      esp_wifi_set_channel(hubChannel, WIFI_SECOND_CHAN_NONE);
+
       // Build registration reply
       RegistrationPacket reg = {};
       reg.type = PKT_REGISTRATION;
       memcpy(reg.sensorMac, s_ownMacStr, sizeof(reg.sensorMac));
       strncpy(reg.version, FIRMWARE_VERSION, sizeof(reg.version) - 1);
-      reg.batteryVoltage = 0.0f;  // Will be filled by caller if needed; quick reply here
+      reg.batteryVoltage = 0.0f;
 
-      // Add hub as peer temporarily if not already
+      // Add hub as peer on the correct channel
       esp_now_peer_info_t peerInfo = {};
       memcpy(peerInfo.peer_addr, senderMac, 6);
-      peerInfo.channel = 0;
+      peerInfo.channel = hubChannel;
       peerInfo.encrypt = false;
-      if (!esp_now_is_peer_exist(senderMac)) {
+      if (esp_now_is_peer_exist(senderMac)) {
+        esp_now_mod_peer(&peerInfo);  // Update channel if peer already registered
+      } else {
         esp_now_add_peer(&peerInfo);
       }
 

@@ -124,6 +124,7 @@ void espnow_hub_broadcast_beacon() {
   beacon.type = PKT_BEACON;
   memcpy(beacon.hubMac, s_hubMacStr, sizeof(beacon.hubMac));
   strncpy(beacon.version, FIRMWARE_VERSION, sizeof(beacon.version) - 1);
+  beacon.channel   = static_cast<uint8_t>(WiFi.channel());
   beacon.timestamp = millis();
 
   const uint8_t broadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
