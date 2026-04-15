@@ -165,8 +165,14 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
 
     const supabase = createClient();
 
+    // Remove any stale channels with the same topic before subscribing.
+    // React StrictMode double-invokes effects; Supabase reuses channels by
+    // name so a still-subscribed channel would throw "cannot add callbacks
+    // after subscribe()". Using a unique suffix avoids the collision.
+    const channelName = `telemetry:${activeSessionId}:${Date.now()}`;
+
     const channel = supabase
-      .channel(`telemetry:${activeSessionId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
