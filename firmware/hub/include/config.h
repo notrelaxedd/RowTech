@@ -25,7 +25,7 @@
 
 // HTTP forwarding to Vercel
 #define TELEMETRY_POST_INTERVAL_MS  100  // POST all sensor states every 100ms
-#define HTTP_TIMEOUT_MS             5000
+#define HTTP_TIMEOUT_MS             8000
 #define HTTP_BUFFER_MAX_PACKETS     50   // Ring buffer capacity on WiFi disconnect
 #define HTTP_BACKOFF_BASE_MS        500  // Initial backoff on HTTP error
 #define HTTP_BACKOFF_MAX_MS         30000
