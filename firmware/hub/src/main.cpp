@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include <ESPmDNS.h>
 #include "logger.h"
 #include "portal.h"
