@@ -19,9 +19,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const session    = useSession();
   const { boats }  = useBoats();
 
-  const { isLive, isSimulated, sessionTime, toggleSimulation } = useRowTech(
-    session.activeSession?.id ?? null,
-  );
+  const {
+    isLive, isSimulated, isLocalStream,
+    sessionTime, toggleSimulation,
+    hubHost, setHubHost,
+  } = useRowTech(session.activeSession?.id ?? null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -33,6 +35,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           activeSession={session.activeSession}
           isLive={isLive}
           isSimulated={isSimulated}
+          isLocalStream={isLocalStream}
           sessionTime={sessionTime}
           onStartSession={() => setModalOpen(true)}
           onToggleSimulation={toggleSimulation}
@@ -43,6 +46,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           }}
           isStarting={session.isStarting}
           isEnding={session.isEnding}
+          hubHost={hubHost}
+          onSetHubHost={setHubHost}
         />
 
         <main className="flex-1 overflow-y-auto p-6">

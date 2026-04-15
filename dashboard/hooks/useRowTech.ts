@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { PhaseType, type SeatState, type CrewState } from "@/types";
 import { SEAT_ORDER } from "@/constants/seatColors";
 import { mean, clamp } from "@/lib/utils";
+import { useLocalWebSocket, type LocalSensorFrame } from "@/hooks/useLocalWebSocket";
 
 // =============================================================================
 // useRowTech — Primary live crew data hook
@@ -128,12 +129,23 @@ interface UseRowTechReturn {
   outlierSeatNumber: number | null;
   isLive:            boolean;
   isSimulated:       boolean;
+  isLocalStream:     boolean;   // true = connected to hub WS directly (~5ms)
   sessionTime:       number;
   connectedCount:    number;
   toggleSimulation:  () => void;
+  hubHost:           string;
+  setHubHost:        (host: string) => void;
 }
 
-export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
+// ---------------------------------------------------------------------------
+// Seat → MAC lookup built from the active session's boat seat assignments.
+// Passed in as a prop so useRowTech stays pure (no Supabase reads here).
+// ---------------------------------------------------------------------------
+
+export function useRowTech(
+  activeSessionId: string | null,
+  macToSeat: Map<string, number> = new Map(),
+): UseRowTechReturn {
   const [seats,       setSeats]       = useState<SeatState[]>(SEAT_ORDER.map(makeDefaultSeat));
   const [isLive,      setIsLive]      = useState(false);
   const [isSimulated, setIsSimulated] = useState(false);
@@ -143,6 +155,8 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
   const sessionStartRef  = useRef<number>(Date.now());
   const staleTimers      = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const outlierSeatRef   = useRef<number>(Math.floor(Math.random() * 8) + 1);
+  const macToSeatRef     = useRef(macToSeat);
+  useEffect(() => { macToSeatRef.current = macToSeat; }, [macToSeat]);
 
   // Session timer
   useEffect(() => {
@@ -159,10 +173,91 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
     staleTimers.current.clear();
   }, [activeSessionId]);
 
+  // ---------------------------------------------------------------------------
+  // Shared handler: apply one sensor frame to seat state.
+  // Used by both the local WS path and the Supabase broadcast fallback.
+  // ---------------------------------------------------------------------------
+  const applySensorFrame = useCallback((
+    seatNum: number,
+    mac: string,
+    phase: number,
+    roll: number,
+    featherAngle: number,
+    rushScore: number,
+    strokeRate: number,
+    catchSharpness: number,
+    batteryLevel: number,
+  ) => {
+    setIsLive(true);
+
+    const existing = staleTimers.current.get(seatNum);
+    if (existing) clearTimeout(existing);
+    staleTimers.current.set(
+      seatNum,
+      setTimeout(() => {
+        setSeats((prev) =>
+          prev.map((s) => s.seatNumber === seatNum ? { ...s, isConnected: false } : s),
+        );
+        setSeats((prev) => {
+          if (prev.every((s) => !s.isConnected)) setIsLive(false);
+          return prev;
+        });
+      }, STALE_TIMEOUT_MS),
+    );
+
+    setSeats((prev) =>
+      prev.map((s) =>
+        s.seatNumber === seatNum
+          ? {
+              ...s,
+              mac,
+              phase:          phase as PhaseType,
+              roll,
+              pitch:          0,
+              featherAngle,
+              rushScore,
+              strokeRate,
+              catchSharpness,
+              batteryLevel,
+              isConnected:    true,
+              lastUpdated:    Date.now(),
+            }
+          : s,
+      ),
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------------------
+  // Local WebSocket — primary path (~5ms, hub pushes on every ESP-NOW packet)
+  // ---------------------------------------------------------------------------
+  const handleLocalFrame = useCallback((frame: LocalSensorFrame) => {
+    if (isSimulated) return;
+    const seatNum = macToSeatRef.current.get(frame.mac);
+    if (!seatNum) return;   // MAC not assigned to any seat in this session
+    applySensorFrame(
+      seatNum, frame.mac, frame.phase, frame.roll,
+      frame.featherAngle, frame.rushScore, frame.strokeRate,
+      frame.catchSharpness,
+      // Convert voltage to rough % for display (3.0V=0%, 4.2V=100%)
+      Math.round(Math.min(100, Math.max(0, (frame.batteryVoltage - 3.0) / 1.2 * 100))),
+    );
+  }, [isSimulated, applySensorFrame]);
+
+  const { isConnected: isLocalStream, hubHost, setHubHost } = useLocalWebSocket({
+    onFrame: handleLocalFrame,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Supabase broadcast — fallback path (~50ms, fires after API upsert)
+  // Disabled when the local WebSocket is connected to avoid double-updates.
+  // ---------------------------------------------------------------------------
   // Realtime subscription — uses broadcast (not postgres_changes) so updates
   // arrive ~50ms after the hub POST instead of waiting for the WAL.
   useEffect(() => {
-    if (!activeSessionId || isSimulated) return;
+    // Skip cloud subscription when the local WebSocket is delivering frames.
+    // Keep the subscription alive but inactive so it reconnects instantly
+    // if the local WS drops.
+    if (!activeSessionId || isSimulated || isLocalStream) return;
 
     const supabase = createClient();
 
@@ -176,51 +271,6 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
       stroke_rate:     number | null;
       catch_sharpness: number | null;
       battery_level:   number | null;
-      timestamp:       number;
-    };
-
-    const handleSensor = (row: BroadcastSensor) => {
-      const seatNum = row.seat_number;
-      if (!seatNum) return;
-
-      setIsLive(true);
-
-      // Reset stale timer for this seat
-      const existing = staleTimers.current.get(seatNum);
-      if (existing) clearTimeout(existing);
-      staleTimers.current.set(
-        seatNum,
-        setTimeout(() => {
-          setSeats((prev) =>
-            prev.map((s) => s.seatNumber === seatNum ? { ...s, isConnected: false } : s),
-          );
-          setSeats((prev) => {
-            if (prev.every((s) => !s.isConnected)) setIsLive(false);
-            return prev;
-          });
-        }, STALE_TIMEOUT_MS),
-      );
-
-      setSeats((prev) =>
-        prev.map((s) =>
-          s.seatNumber === seatNum
-            ? {
-                ...s,
-                mac:            row.device_mac,
-                phase:          (row.phase ?? 0) as PhaseType,
-                roll:           row.roll           ?? 0,
-                pitch:          0,
-                featherAngle:   row.feather_angle  ?? 0,
-                rushScore:      row.rush_score     ?? 0,
-                strokeRate:     row.stroke_rate    ?? 0,
-                catchSharpness: row.catch_sharpness ?? 0,
-                batteryLevel:   row.battery_level  ?? 0,
-                isConnected:    true,
-                lastUpdated:    Date.now(),
-              }
-            : s,
-        ),
-      );
     };
 
     const channel = supabase
@@ -229,8 +279,19 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
         "broadcast",
         { event: "telemetry" },
         (msg: { payload: { sensors: BroadcastSensor[] } }) => {
-          for (const sensor of msg.payload.sensors) {
-            handleSensor(sensor);
+          for (const row of msg.payload.sensors) {
+            const seatNum = row.seat_number;
+            if (!seatNum) continue;
+            applySensorFrame(
+              seatNum, row.device_mac,
+              row.phase           ?? 0,
+              row.roll            ?? 0,
+              row.feather_angle   ?? 0,
+              row.rush_score      ?? 0,
+              row.stroke_rate     ?? 0,
+              row.catch_sharpness ?? 0,
+              row.battery_level   ?? 0,
+            );
           }
         },
       )
@@ -241,7 +302,7 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
       staleTimers.current.clear();
       void supabase.removeChannel(channel);
     };
-  }, [activeSessionId, isSimulated]);
+  }, [activeSessionId, isSimulated, isLocalStream, applySensorFrame]);
 
   // Simulation tick
   useEffect(() => {
@@ -278,8 +339,11 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
     outlierSeatNumber: isSimulated ? outlierSeatRef.current : outlierSeatNum,
     isLive,
     isSimulated,
+    isLocalStream,
     sessionTime,
     connectedCount,
     toggleSimulation,
+    hubHost,
+    setHubHost,
   };
 }

@@ -1,10 +1,12 @@
 #include <Arduino.h>
+#include <ESPmDNS.h>
 #include "logger.h"
 #include "portal.h"
 #include "wifi_mgr.h"
 #include "sensor_table.h"
 #include "espnow_hub.h"
 #include "http_forwarder.h"
+#include "ws_server.h"
 #include "../include/config.h"
 #include "packets.h"
 
@@ -58,9 +60,18 @@ static void update_status_led() {
 
 // ESP-NOW callbacks — called from receive interrupt context; keep minimal
 static void on_telemetry_received(const TelemetryPacket* pkt) {
-  // State already updated in sensor_table by espnow_hub module
-  // Nothing extra needed here — telemetry batch POSTed on timer
-  (void)pkt;
+  // Push to local WebSocket clients immediately — this is the ~5ms path.
+  // ws_server_push() is non-blocking and skips work if no clients connected.
+  ws_server_push(pkt->mac,
+                 pkt->phase,
+                 pkt->roll,
+                 pkt->pitch,
+                 pkt->featherAngle,
+                 pkt->rushScore,
+                 pkt->strokeRate,
+                 pkt->catchSharpness,
+                 pkt->batteryVoltage,
+                 pkt->timestamp);
 }
 
 static void on_stroke_received(const StrokeSummaryPacket* pkt) {
@@ -103,7 +114,20 @@ void setup() {
 
   http_forwarder_init();
 
-  LOG_INFO("BOOT", "Hub ready. Listening for sensors...");
+  // Local WebSocket server — browsers on the LAN connect to ws://rowtech.local:81
+  ws_server_begin();
+
+  // mDNS — advertise as "rowtech.local" so browser doesn't need to know the IP
+  if (MDNS.begin("rowtech")) {
+    MDNS.addService("ws", "tcp", 81);
+    LOG_INFO("BOOT", "mDNS started — reachable at rowtech.local:81");
+  } else {
+    LOG_WARN("BOOT", "mDNS init failed — use hub IP directly");
+  }
+
+  LOG_INFO("BOOT", "Hub ready. Local WS: ws://%s:81  Cloud: %s",
+           WiFi.localIP().toString().c_str(), VERCEL_BASE_URL);
+  LOG_INFO("BOOT", "Hub IP: %s", WiFi.localIP().toString().c_str());
 }
 
 void loop() {
@@ -117,6 +141,9 @@ void loop() {
   }
   s_prevConnected = currentlyConnected;
   wifi_mgr_update();
+
+  // --- Local WebSocket server ---
+  ws_server_loop();
 
   // --- ESP-NOW processing (ACK dispatch, etc.) ---
   espnow_hub_update();
