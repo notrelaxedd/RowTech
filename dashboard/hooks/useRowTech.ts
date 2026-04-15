@@ -159,84 +159,79 @@ export function useRowTech(activeSessionId: string | null): UseRowTechReturn {
     staleTimers.current.clear();
   }, [activeSessionId]);
 
-  // Realtime subscription
+  // Realtime subscription — uses broadcast (not postgres_changes) so updates
+  // arrive ~50ms after the hub POST instead of waiting for the WAL.
   useEffect(() => {
     if (!activeSessionId || isSimulated) return;
 
     const supabase = createClient();
 
-    // Remove any stale channels with the same topic before subscribing.
-    // React StrictMode double-invokes effects; Supabase reuses channels by
-    // name so a still-subscribed channel would throw "cannot add callbacks
-    // after subscribe()". Using a unique suffix avoids the collision.
-    const channelName = `telemetry:${activeSessionId}:${Date.now()}`;
+    type BroadcastSensor = {
+      device_mac:      string;
+      seat_number:     number | null;
+      phase:           number | null;
+      roll:            number | null;
+      feather_angle:   number | null;
+      rush_score:      number | null;
+      stroke_rate:     number | null;
+      catch_sharpness: number | null;
+      battery_level:   number | null;
+      timestamp:       number;
+    };
+
+    const handleSensor = (row: BroadcastSensor) => {
+      const seatNum = row.seat_number;
+      if (!seatNum) return;
+
+      setIsLive(true);
+
+      // Reset stale timer for this seat
+      const existing = staleTimers.current.get(seatNum);
+      if (existing) clearTimeout(existing);
+      staleTimers.current.set(
+        seatNum,
+        setTimeout(() => {
+          setSeats((prev) =>
+            prev.map((s) => s.seatNumber === seatNum ? { ...s, isConnected: false } : s),
+          );
+          setSeats((prev) => {
+            if (prev.every((s) => !s.isConnected)) setIsLive(false);
+            return prev;
+          });
+        }, STALE_TIMEOUT_MS),
+      );
+
+      setSeats((prev) =>
+        prev.map((s) =>
+          s.seatNumber === seatNum
+            ? {
+                ...s,
+                mac:            row.device_mac,
+                phase:          (row.phase ?? 0) as PhaseType,
+                roll:           row.roll           ?? 0,
+                pitch:          0,
+                featherAngle:   row.feather_angle  ?? 0,
+                rushScore:      row.rush_score     ?? 0,
+                strokeRate:     row.stroke_rate    ?? 0,
+                catchSharpness: row.catch_sharpness ?? 0,
+                batteryLevel:   row.battery_level  ?? 0,
+                isConnected:    true,
+                lastUpdated:    Date.now(),
+              }
+            : s,
+        ),
+      );
+    };
 
     const channel = supabase
-      .channel(channelName)
+      .channel(`session:${activeSessionId}`)
       .on(
-        "postgres_changes",
-        {
-          event:  "*",
-          schema: "public",
-          table:  "telemetry",
-          filter: `session_id=eq.${activeSessionId}`,
-        },
-        (payload) => {
-          const row = payload.new as {
-            device_mac:      string;
-            seat_number:     number | null;
-            phase:           number | null;
-            roll:            number | null;
-            feather_angle:   number | null;
-            rush_score:      number | null;
-            stroke_rate:     number | null;
-            catch_sharpness: number | null;
-            battery_level:   number | null;
-            timestamp:       number;
-          };
-
-          const seatNum = row.seat_number;
-          if (!seatNum) return;
-
-          setIsLive(true);
-
-          // Reset stale timer for this seat
-          const existing = staleTimers.current.get(seatNum);
-          if (existing) clearTimeout(existing);
-          staleTimers.current.set(
-            seatNum,
-            setTimeout(() => {
-              setSeats((prev) =>
-                prev.map((s) => s.seatNumber === seatNum ? { ...s, isConnected: false } : s),
-              );
-              // If all seats disconnected, mark not live
-              setSeats((prev) => {
-                if (prev.every((s) => !s.isConnected)) setIsLive(false);
-                return prev;
-              });
-            }, STALE_TIMEOUT_MS),
-          );
-
-          setSeats((prev) =>
-            prev.map((s) =>
-              s.seatNumber === seatNum
-                ? {
-                    ...s,
-                    mac:            row.device_mac,
-                    phase:          (row.phase ?? 0) as PhaseType,
-                    roll:           row.roll           ?? 0,
-                    pitch:          0,
-                    featherAngle:   row.feather_angle  ?? 0,
-                    rushScore:      row.rush_score     ?? 0,
-                    strokeRate:     row.stroke_rate    ?? 0,
-                    catchSharpness: row.catch_sharpness ?? 0,
-                    batteryLevel:   row.battery_level  ?? 0,
-                    isConnected:    true,
-                    lastUpdated:    Date.now(),
-                  }
-                : s,
-            ),
-          );
+        "broadcast",
+        { event: "telemetry" },
+        (msg: { payload: { sensors: BroadcastSensor[] } }) => {
+          for (const sensor of msg.payload.sensors) {
+            handleSensor(sensor);
+          }
         },
       )
       .subscribe();

@@ -113,16 +113,46 @@ export async function POST(request: NextRequest) {
     return err("Database error", 500);
   }
 
-  // Update devices last_seen and battery_level
-  for (const s of sensors) {
-    await supabase
-      .from("devices")
-      .update({
-        last_seen:     new Date().toISOString(),
-        battery_level: voltageToPercent(s.batteryVoltage),
-      })
-      .eq("mac_address", s.mac);
+  // Broadcast processed seat state directly over Realtime so the dashboard
+  // receives it immediately — bypassing the WAL latency of postgres_changes.
+  if (sessionId) {
+    const broadcastPayload = sensors.map((s) => ({
+      device_mac:      s.mac,
+      seat_number:     macToSeat.get(s.mac) ?? null,
+      session_id:      sessionId,
+      timestamp:       s.timestamp,
+      phase:           s.phase,
+      roll:            s.roll,
+      feather_angle:   s.featherAngle,
+      rush_score:      s.rushScore,
+      stroke_rate:     s.strokeRate,
+      catch_sharpness: s.catchSharpness,
+      battery_level:   voltageToPercent(s.batteryVoltage),
+    }));
+
+    // Fire-and-forget: don't block the response on broadcast delivery.
+    void (async () => {
+      const bc = supabase.channel(`session:${sessionId}`);
+      await new Promise<void>((resolve) => {
+        bc.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); });
+      });
+      await bc.send({ type: "broadcast", event: "telemetry", payload: { sensors: broadcastPayload } });
+      await supabase.removeChannel(bc);
+    })();
   }
+
+  // Update devices last_seen and battery_level (fire-and-forget)
+  void Promise.all(
+    sensors.map((s) =>
+      supabase
+        .from("devices")
+        .update({
+          last_seen:     new Date().toISOString(),
+          battery_level: voltageToPercent(s.batteryVoltage),
+        })
+        .eq("mac_address", s.mac),
+    ),
+  );
 
   return ok({ accepted: sensors.length });
 }
